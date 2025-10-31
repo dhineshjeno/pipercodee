@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Code2, LayoutDashboard, Trophy, Users, User, Settings } from 'lucide-react';
 import { currentUser } from '../data/mockData';
 import { StatusIndicator } from './StatusIndicator';
+import { buildLogoutUrl, isAuthenticated, setAuthenticated } from '../config/cognito';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
+  const authed = useMemo(() => isAuthenticated(), [location.key]);
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -63,6 +65,24 @@ export const Navbar: React.FC = () => {
               alt={currentUser.name}
               className="w-10 h-10 rounded-full ring-2 ring-indigo-500/50"
             />
+            {authed ? (
+              <button
+                onClick={() => {
+                  setAuthenticated(false);
+                  window.location.href = buildLogoutUrl();
+                }}
+                className="px-3 py-2 text-sm rounded-lg bg-slate-800/60 border border-slate-700/60 text-slate-300 hover:bg-slate-700/50"
+              >
+                Logout
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                className="px-3 py-2 text-sm rounded-lg bg-indigo-600/80 text-white hover:bg-indigo-500"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       </div>

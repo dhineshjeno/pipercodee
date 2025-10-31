@@ -14,6 +14,7 @@ import {
   Filler,
 } from 'chart.js';
 import { users, projects, currentUser } from '../data/mockData';
+import { getIdTokenClaims } from '../config/cognito';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { LanguageBadge } from '../components/LanguageBadge';
 import { StreakCounter } from '../components/StreakCounter';
@@ -33,6 +34,9 @@ export const Profile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const user = users.find((u) => u.id === id) || currentUser;
   const isOwnProfile = user.id === currentUser.id;
+  const claims = getIdTokenClaims();
+  const displayName = claims?.name || user.name;
+  const displayUsername = claims?.preferred_username || claims?.email || user.username;
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'stats'>('overview');
 
   const formatHours = (seconds: number) => {
@@ -127,9 +131,9 @@ export const Profile: React.FC = () => {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h1 className="text-3xl font-bold text-slate-100 mb-1">
-                    {user.name}
+                    {displayName}
                   </h1>
-                  <p className="text-slate-400">@{user.username}</p>
+                  <p className="text-slate-400">@{displayUsername}</p>
                 </div>
                 {!isOwnProfile && (
                   <button className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium flex items-center gap-2">
