@@ -19,6 +19,7 @@ export const AuthCallback: React.FC = () => {
 				await exchangeCodeForTokens(code);
 				setStatus('success');
 				setMessage('Signed in successfully.');
+				window.location.href = '/';
 			} catch (e: any) {
 				setStatus('error');
 				setMessage(e?.message || 'Authentication failed');

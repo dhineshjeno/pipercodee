@@ -1,13 +1,50 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Trophy, TrendingUp, TrendingDown, Minus, Crown, Medal } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { leaderboard } from '../data/mockData';
 import { LeaderboardFilter, TimeFilter } from '../types';
 import { StatusIndicator } from '../components/StatusIndicator';
+import { getLeaderboard } from '../api/client';
 
 export const Leaderboard: React.FC = () => {
   const [filter, setFilter] = useState<LeaderboardFilter>('global');
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
+  const [items, setItems] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getLeaderboard();
+        if(data){
+          setLoaded(true);
+        }
+        if (cancelled || !Array.isArray(data)) return;
+        // Map API data flexibly to existing shape
+        const mapped = data.map((entry: any, idx: number) => ({
+          rank: entry.rank ?? idx + 1,
+          timeThisWeek: entry.timeThisWeek ?? entry.weekTime ?? entry.user?.stats?.weekTime ?? 0,
+          timeThisMonth: entry.timeThisMonth ?? entry.monthTime ?? entry.user?.stats?.monthTime ?? 0,
+          change: entry.change ?? 0,
+          user: {
+            id: entry.user?.id ?? entry.userId ?? String(idx + 1),
+            name: entry.user?.name ?? entry.name ?? 'User',
+            username: entry.user?.username ?? entry.username ?? 'user',
+            avatar: entry.user?.avatar ?? 'https://via.placeholder.com/64',
+            status: entry.user?.status ?? 'online',
+            isFriend: entry.user?.isFriend ?? false,
+            currentActivity: entry.user?.currentActivity ?? null,
+            stats: entry.user?.stats ?? { streak: 0, totalTime: 0 },
+          },
+        }));
+        setItems(mapped);
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e?.message || 'Failed to load leaderboard');
+        if (!cancelled) setItems([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const formatHours = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -37,9 +74,24 @@ export const Leaderboard: React.FC = () => {
     return <Minus className="w-4 h-4 text-slate-400" />;
   };
 
-  const filteredLeaderboard = leaderboard.filter((entry) =>
+  const filteredLeaderboard = items.filter((entry) =>
     filter === 'friends' ? entry.user.isFriend : true
   );
+
+  if (!loaded) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {loadError ? (
+          <div className="mb-4 p-3 rounded-md border border-red-800/50 bg-red-900/20 text-red-300 text-sm">
+            {loadError}
+          </div>
+        ) : (
+          <div className="text-slate-400">Loading…</div>
+        )}
+      </div>
+    );
+  }
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -53,6 +105,10 @@ export const Leaderboard: React.FC = () => {
             <p className="text-slate-400">Top coders this week</p>
           </div>
         </div>
+
+        {loadError && (
+          <p className="text-xs text-red-400">{loadError}</p>
+        )}
 
         <div className="flex flex-wrap gap-3">
           <div className="flex gap-2 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50">
@@ -114,6 +170,9 @@ export const Leaderboard: React.FC = () => {
       </div>
 
       <div className="space-y-3">
+        {filteredLeaderboard.length === 0 && (
+          <div className="text-slate-500 text-sm">No leaderboard data</div>
+        )}
         {filteredLeaderboard.map((entry, index) => {
           const isTopThree = entry.rank <= 3;
           const timeValue =

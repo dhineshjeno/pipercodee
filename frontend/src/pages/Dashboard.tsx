@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Clock, Code2, Folder, TrendingUp } from 'lucide-react';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import {
@@ -11,10 +11,10 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { currentUser, activities, projects } from '../data/mockData';
+import { getMe } from '../api/client';
+import { getIdTokenClaims } from '../config/cognito';
 import { StatCard } from '../components/StatCard';
 import { StreakCounter } from '../components/StreakCounter';
-import { ActivityFeed } from '../components/ActivityFeed';
 import { LanguageBadge } from '../components/LanguageBadge';
 
 ChartJS.register(
@@ -28,18 +28,43 @@ ChartJS.register(
 );
 
 export const Dashboard: React.FC = () => {
+  const claims = useMemo(() => getIdTokenClaims(), []);
+  const [stats, setStats] = useState<any>({
+    todayTime: 0,
+    weekTime: 0,
+    monthTime: 0,
+    streak: 0,
+    longestStreak: 0,
+    languages: {},
+    projects: {},
+  });
+  const [name, setName] = useState<string>('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await getMe();
+        if (cancelled || !me) return;
+        if (me.stats) setStats(me.stats);
+        if (me.name) setName(me.name);
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e?.message || 'Failed to load dashboard');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const formatHours = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     return `${hours}h`;
   };
 
   const languageData = {
-    labels: Object.keys(currentUser.stats.languages),
+    labels: Object.keys(stats.languages as Record<string, number>),
     datasets: [
       {
-        data: Object.values(currentUser.stats.languages).map((s) =>
-          Math.floor(s / 3600)
-        ),
+        data: (Object.values(stats.languages as Record<string, number>) as number[]).map((s: number) => Math.floor(s / 3600)),
         backgroundColor: [
           'rgba(99, 102, 241, 0.8)',
           'rgba(234, 179, 8, 0.8)',
@@ -60,13 +85,11 @@ export const Dashboard: React.FC = () => {
   };
 
   const projectData = {
-    labels: Object.keys(currentUser.stats.projects),
+    labels: Object.keys(stats.projects as Record<string, number>),
     datasets: [
       {
         label: 'Hours',
-        data: Object.values(currentUser.stats.projects).map((s) =>
-          Math.floor(s / 3600)
-        ),
+        data: (Object.values(stats.projects as Record<string, number>) as number[]).map((s: number) => Math.floor(s / 3600)),
         backgroundColor: 'rgba(99, 102, 241, 0.8)',
         borderColor: 'rgba(99, 102, 241, 1)',
         borderWidth: 2,
@@ -120,15 +143,18 @@ export const Dashboard: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-100 mb-2">
-          Welcome back, {currentUser.name.split(' ')[0]}!
+          Welcome back, {(claims?.name || name).split(' ')[0]}!
         </h1>
         <p className="text-slate-400">Here's your coding activity overview</p>
+        {loadError && (
+          <p className="text-xs text-red-400 mt-2">{loadError}</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           title="Today"
-          value={formatHours(currentUser.stats.todayTime)}
+          value={formatHours(stats.todayTime)}
           subtitle="Keep it up!"
           icon={Clock}
           color="indigo"
@@ -136,7 +162,7 @@ export const Dashboard: React.FC = () => {
         />
         <StatCard
           title="This Week"
-          value={formatHours(currentUser.stats.weekTime)}
+          value={formatHours(stats.weekTime)}
           subtitle="7 days"
           icon={TrendingUp}
           color="emerald"
@@ -144,14 +170,14 @@ export const Dashboard: React.FC = () => {
         />
         <StatCard
           title="Languages"
-          value={Object.keys(currentUser.stats.languages).length}
+          value={Object.keys(stats.languages).length}
           subtitle="Active languages"
           icon={Code2}
           color="blue"
         />
         <StatCard
           title="Projects"
-          value={Object.keys(currentUser.stats.projects).length}
+          value={Object.keys(stats.projects).length}
           subtitle="In progress"
           icon={Folder}
           color="orange"
@@ -168,7 +194,7 @@ export const Dashboard: React.FC = () => {
               <Doughnut data={languageData} options={chartOptions} />
             </div>
             <div className="mt-6 flex flex-wrap gap-2">
-              {Object.keys(currentUser.stats.languages).map((lang) => (
+              {Object.keys(stats.languages).map((lang) => (
                 <LanguageBadge key={lang} language={lang} />
               ))}
             </div>
@@ -177,8 +203,8 @@ export const Dashboard: React.FC = () => {
 
         <div>
           <StreakCounter
-            currentStreak={currentUser.stats.streak}
-            longestStreak={currentUser.stats.longestStreak}
+            currentStreak={stats.streak || 0}
+            longestStreak={stats.longestStreak || 0}
             size="md"
           />
         </div>
@@ -186,49 +212,25 @@ export const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-          <h2 className="text-xl font-semibold text-slate-100 mb-4">
-            Project Activity
-          </h2>
+          <h2 className="text-xl font-semibold text-slate-100 mb-4">Project Activity</h2>
           <div className="h-64">
-            <Bar data={projectData} options={barChartOptions} />
+            {Object.keys(stats.projects as Record<string, number>).length > 0 ? (
+              <Bar data={projectData} options={barChartOptions} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-500 text-sm">No project data</div>
+            )}
           </div>
         </div>
 
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-          <h2 className="text-xl font-semibold text-slate-100 mb-4">
-            Active Projects
-          </h2>
-          <div className="space-y-3">
-            {projects.slice(0, 3).map((project) => (
-              <div
-                key={project.id}
-                className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/30"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-slate-200">
-                    {project.name}
-                  </h3>
-                  <LanguageBadge language={project.language} size="sm" />
-                </div>
-                <p className="text-sm text-slate-400 mb-2">
-                  {project.description}
-                </p>
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>{formatHours(project.timeSpent)} spent</span>
-                  <span>{project.linesOfCode?.toLocaleString()} LOC</span>
-                </div>
-              </div>
-            ))}
+          <h2 className="text-xl font-semibold text-slate-100 mb-4">Active Projects</h2>
+          <div className="space-y-3 text-sm text-slate-500">
+            Coming soon
           </div>
         </div>
       </div>
 
-      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
-        <h2 className="text-xl font-semibold text-slate-100 mb-4">
-          Recent Activity
-        </h2>
-        <ActivityFeed activities={activities} maxItems={6} />
-      </div>
+      {/* Recent Activity via API will be added later */}
     </div>
   );
 };

@@ -1,20 +1,121 @@
-import React, { useState } from 'react';
-import { Settings as SettingsIcon, Code2, Bell, Lock, User, Download } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Settings as SettingsIcon, Code2, Bell, Lock, User, Download, LogOut } from 'lucide-react';
 import { currentUser } from '../data/mockData';
+import { buildLogoutUrl, getAccessToken, getIdTokenClaims, setAuthenticated } from '../config/cognito';
+import { getMe, updateMe } from '../api/client';
+
+
+
 
 export const Settings: React.FC = () => {
-  const [notifications, setNotifications] = useState({
+  const claims = useMemo(() => getIdTokenClaims(), []);
+  const accessToken = useMemo(() => getAccessToken(), []);
+  
+  // Initialize with default values
+  const defaultNotifications = {
     friendActivity: true,
     achievements: true,
     weeklyReport: true,
     leaderboardUpdates: false,
-  });
+  };
 
-  const [privacy, setPrivacy] = useState({
+  const defaultPrivacy = {
     showProfile: true,
     showActivity: true,
     showStats: false,
+  };
+
+  const [notifications, setNotifications] = useState(defaultNotifications);
+  const [privacy, setPrivacy] = useState(defaultPrivacy);
+  const [me, setMe] = useState<any>(null);
+  const [form, setForm] = useState({
+    name: '',
+    statusMessage: '',
   });
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const meData = await getMe();
+        if (cancelled || !meData) return; // Change '!me' to '!meData'
+        
+        setMe(meData);
+        
+       
+  
+        // Set notifications from backend or use defaults
+        if (meData.notifications) { // Change 'me' to 'meData'
+          setNotifications({
+            ...defaultNotifications,
+            ...meData.notifications // Change 'me' to 'meData'
+          });
+        }
+  
+        // Set privacy from backend or use defaults
+        if (meData.privacy) { // Change 'me' to 'meData'
+          setPrivacy({
+            ...defaultPrivacy,
+            ...meData.privacy // Change 'me' to 'meData'
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load user data:', e);
+        // Fallback to claims and defaults
+        setForm({
+          name: claims?.name || currentUser.name,
+          statusMessage: currentUser.statusMessage || '',
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [claims, defaultNotifications, defaultPrivacy]); // Add dependencies
+
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const updatedUser = await updateMe({ 
+        name: form.name, 
+        statusMessage: form.statusMessage 
+      });
+      setMe(updatedUser); // Add this line
+      setSaveMsg('Profile saved successfully');
+    } catch (e: any) {
+      setSaveMsg(e?.message || 'Failed to save profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await updateMe({ notifications });
+      setSaveMsg('Notification settings saved');
+    } catch (e: any) {
+      setSaveMsg(e?.message || 'Failed to save notifications');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSavePrivacy = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await updateMe({ privacy });
+      setSaveMsg('Privacy settings saved');
+    } catch (e: any) {
+      setSaveMsg(e?.message || 'Failed to save privacy settings');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -34,6 +135,52 @@ export const Settings: React.FC = () => {
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
           <div className="flex items-center gap-3 mb-6">
             <User className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-xl font-semibold text-slate-100">Account</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="bg-slate-900/40 rounded-lg p-4 border border-slate-700/30">
+              <p className="text-slate-400">Name</p>
+              <p className="text-slate-200 font-medium">{me?.name || claims?.name || '—'}</p>
+          </div>
+            <div className="bg-slate-900/40 rounded-lg p-4 border border-slate-700/30">
+              <p className="text-slate-400">Email</p>
+              <p className="text-slate-200 font-medium">{claims?.email || '—'}</p>
+            </div>
+            <div className="bg-slate-900/40 rounded-lg p-4 border border-slate-700/30">
+              <p className="text-slate-400">Username</p>
+              <p className="text-slate-200 font-medium">{me?.username || claims?.preferred_username || currentUser.username}</p>
+            </div>
+            <div className="bg-slate-900/40 rounded-lg p-4 border border-slate-700/30 break-all">
+              <p className="text-slate-400">User ID (sub)</p>
+              <p className="text-slate-200 font-mono text-xs">{claims?.sub || '—'}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                if (accessToken) navigator.clipboard.writeText(accessToken);
+              }}
+              className="px-3 py-2 text-xs rounded-lg bg-slate-900/50 border border-slate-700/50 text-slate-300 hover:bg-slate-800/50"
+            >
+              Copy Access Token
+            </button>
+            <button
+              onClick={() => {
+                setAuthenticated(false);
+                window.location.href = buildLogoutUrl();
+              }}
+              className="px-3 py-2 text-xs rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 inline-flex items-center gap-2"
+            >
+              <LogOut className="w-4 h-4" /> Sign out everywhere
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+          <div className="flex items-center gap-3 mb-6">
+            <User className="w-5 h-5 text-indigo-400" />
             <h2 className="text-xl font-semibold text-slate-100">Profile</h2>
           </div>
 
@@ -44,21 +191,13 @@ export const Settings: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue={currentUser.name}
+                value={form.name || me?.name || claims?.name || '—'}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Username
-              </label>
-              <input
-                type="text"
-                defaultValue={currentUser.username}
-                className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+            
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -66,14 +205,25 @@ export const Settings: React.FC = () => {
               </label>
               <input
                 type="text"
-                defaultValue={currentUser.statusMessage}
+                value={form.statusMessage || me?.statusMessage}
+                onChange={(e) => setForm({ ...form, statusMessage: e.target.value })}
                 placeholder="What are you working on?"
                 className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            <button className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium">
-              Save Changes
+            {saveMsg && saveMsg.includes('Profile') && (
+              <div className={`text-sm ${saveMsg.startsWith('Profile saved') ? 'text-emerald-400' : 'text-red-400'}`}>
+                {saveMsg}
+              </div>
+            )}
+
+            <button
+              onClick={handleSaveProfile}
+              disabled={saving}
+              className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save Profile'}
             </button>
           </div>
         </div>
@@ -157,6 +307,14 @@ export const Settings: React.FC = () => {
               </div>
             ))}
           </div>
+
+          <button
+            onClick={handleSaveNotifications}
+            disabled={saving}
+            className="mt-4 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save Notifications'}
+          </button>
         </div>
 
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
@@ -195,6 +353,14 @@ export const Settings: React.FC = () => {
               </div>
             ))}
           </div>
+
+          <button
+            onClick={handleSavePrivacy}
+            disabled={saving}
+            className="mt-4 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save Privacy Settings'}
+          </button>
         </div>
 
         <div className="bg-slate-800/50 rounded-xl p-6 border border-red-500/20">

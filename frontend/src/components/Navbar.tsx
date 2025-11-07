@@ -1,19 +1,30 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Code2, LayoutDashboard, Trophy, Users, User, Settings } from 'lucide-react';
-import { currentUser } from '../data/mockData';
+
 import { StatusIndicator } from './StatusIndicator';
-import { buildLogoutUrl, isAuthenticated, setAuthenticated } from '../config/cognito';
+import { buildLogoutUrl, getIdTokenClaims, isAuthenticated, setAuthenticated } from '../config/cognito';
+import { getMe } from '../api/client';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
   const authed = useMemo(() => isAuthenticated(), [location.key]);
+  const claims = getIdTokenClaims();
+  const [meData, setMeData] = useState<any | null>(null);
+
+  useEffect(() => {
+    const fetchMeData = async () => {
+      const meData = await getMe();
+      setMeData(meData);
+    };
+    fetchMeData();
+  }, []);
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
     { path: '/friends', icon: Users, label: 'Friends' },
-    { path: `/profile/${currentUser.id}`, icon: User, label: 'Profile' },
+    { path: `/profile/${claims?.sub}`, icon: User, label: 'Profile' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 
@@ -59,10 +70,10 @@ export const Navbar: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <StatusIndicator status={currentUser.status} size="sm" />
+            <StatusIndicator status={meData?.status || 'online'} size="sm" />
             <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
+              src={meData?.avatar || 'https://via.placeholder.com/128'}
+              alt={meData?.name || ''}
               className="w-10 h-10 rounded-full ring-2 ring-indigo-500/50"
             />
             {authed ? (

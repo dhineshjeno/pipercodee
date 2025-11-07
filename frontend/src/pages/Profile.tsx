@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Calendar, Clock, Flame, Code2, Folder, TrendingUp, Users } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
@@ -13,12 +13,13 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { users, projects, currentUser } from '../data/mockData';
+// No mock data: using API only
 import { getIdTokenClaims } from '../config/cognito';
+import { getMe } from '../api/client';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { LanguageBadge } from '../components/LanguageBadge';
 import { StreakCounter } from '../components/StreakCounter';
-
+import { getUserById } from '../api/client';
 ChartJS.register(
   LineElement,
   PointElement,
@@ -32,12 +33,54 @@ ChartJS.register(
 
 export const Profile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const user = users.find((u) => u.id === id) || currentUser;
-  const isOwnProfile = user.id === currentUser.id;
+  const [user, setUser] = useState<any | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  let isOwnProfile = false;
+
+  
   const claims = getIdTokenClaims();
-  const displayName = claims?.name || user.name;
-  const displayUsername = claims?.preferred_username || claims?.email || user.username;
+
+  if(claims?.sub === id){
+    isOwnProfile = true;
+  }
+
+  
+
+
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'stats'>('overview');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        let meData = null;
+        if(isOwnProfile){
+                meData = await getMe();       
+              } else {
+                meData = await getUserById(id);
+                
+              } 
+              
+        if (!cancelled && meData) {
+          setUser({
+            id: meData.userId || meData.id,
+            name: meData.name || '',
+            username: meData.username || meData.email || '',
+            avatar: meData.avatar || 'https://via.placeholder.com/128',
+            status: meData.status || 'online',
+            statusMessage: meData.statusMessage || '',
+            currentActivity: meData.currentActivity || null,
+            stats: meData.stats || { totalTime: 0, weekTime: 0, monthTime: 0, streak: 0, longestStreak: 0, languages: {}, projects: {} },
+          });
+
+          
+        }
+      } catch (e: any) {
+        if (!cancelled) setLoadError(e?.message || 'Failed to load profile');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
 
   const formatHours = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -95,7 +138,7 @@ export const Profile: React.FC = () => {
         },
         ticks: {
           color: '#94a3b8',
-          callback: (value: number) => `${value}h`,
+          callback: (value: any) => `${value}h`,
         },
       },
       x: {
@@ -109,8 +152,27 @@ export const Profile: React.FC = () => {
     },
   };
 
+  if (!user) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {loadError ? (
+          <div className="mb-4 p-3 rounded-md border border-red-800/50 bg-red-900/20 text-red-300 text-sm">
+            {loadError}
+          </div>
+        ) : (
+          <div className="text-slate-400">Loading profile…</div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {loadError && (
+        <div className="mb-4 p-3 rounded-md border border-red-800/50 bg-red-900/20 text-red-300 text-sm">
+          Failed to load profile from API.
+        </div>
+      )}
       <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 rounded-2xl border border-slate-700/50 overflow-hidden mb-6">
         <div className="h-32 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20" />
 
@@ -118,12 +180,12 @@ export const Profile: React.FC = () => {
           <div className="flex flex-col md:flex-row gap-6 -mt-16">
             <div className="relative">
               <img
-                src={user.avatar}
-                alt={user.name}
+                src={user?.avatar}
+                alt={user?.name}
                 className="w-32 h-32 rounded-2xl ring-4 ring-slate-900 object-cover"
               />
               <div className="absolute -bottom-2 -right-2">
-                <StatusIndicator status={user.status} size="lg" />
+                {user && <StatusIndicator status={user.status} size="lg" />}
               </div>
             </div>
 
@@ -131,9 +193,9 @@ export const Profile: React.FC = () => {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h1 className="text-3xl font-bold text-slate-100 mb-1">
-                    {displayName}
+                    {user.name || claims?.name || 'Profile'}
                   </h1>
-                  <p className="text-slate-400">@{displayUsername}</p>
+                  <p className="text-slate-400">@{user.username || '—'}</p>
                 </div>
                 {!isOwnProfile && (
                   <button className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors font-medium flex items-center gap-2">
@@ -143,11 +205,11 @@ export const Profile: React.FC = () => {
                 )}
               </div>
 
-              {user.statusMessage && (
+              {user?.statusMessage && (
                 <p className="text-slate-300 mb-4">{user.statusMessage}</p>
               )}
 
-              {user.currentActivity && (
+              {user?.currentActivity && (
                 <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50 mb-4">
                   <p className="text-sm text-slate-400 mb-2">Currently working on</p>
                   <div className="flex items-center gap-3">
@@ -177,7 +239,7 @@ export const Profile: React.FC = () => {
                     <span className="text-sm">Total Time</span>
                   </div>
                   <p className="text-2xl font-bold text-slate-100">
-                    {formatHours(user.stats.totalTime)}
+                    {formatHours(user?.stats?.totalTime || 0)}
                   </p>
                 </div>
                 <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
@@ -186,7 +248,7 @@ export const Profile: React.FC = () => {
                     <span className="text-sm">Streak</span>
                   </div>
                   <p className="text-2xl font-bold text-slate-100">
-                    {user.stats.streak}
+                    {user?.stats?.streak || 0}
                   </p>
                 </div>
                 <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
@@ -195,7 +257,7 @@ export const Profile: React.FC = () => {
                     <span className="text-sm">Languages</span>
                   </div>
                   <p className="text-2xl font-bold text-slate-100">
-                    {Object.keys(user.stats.languages).length}
+                    {Object.keys((user?.stats?.languages || {}) as Record<string, number>).length}
                   </p>
                 </div>
                 <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/30">
@@ -204,7 +266,7 @@ export const Profile: React.FC = () => {
                     <span className="text-sm">Projects</span>
                   </div>
                   <p className="text-2xl font-bold text-slate-100">
-                    {Object.keys(user.stats.projects).length}
+                    {Object.keys((user?.stats?.projects || {}) as Record<string, number>).length}
                   </p>
                 </div>
               </div>
@@ -266,17 +328,18 @@ export const Profile: React.FC = () => {
                 Top Languages
               </h2>
               <div className="space-y-3">
-                {Object.entries(user.stats.languages)
-                  .sort(([, a], [, b]) => b - a)
+                {Object.entries((user?.stats?.languages || {}) as Record<string, number>)
+                  .sort(([, a], [, b]) => (b as number) - (a as number))
                   .map(([language, time]) => {
-                    const maxTime = Math.max(...Object.values(user.stats.languages));
-                    const percentage = (time / maxTime) * 100;
+                    const languages = (user?.stats?.languages || {}) as Record<string, number>;
+                    const maxTime = Object.values(languages).length ? Math.max(...Object.values(languages)) : 1;
+                    const percentage = ((time as number) / maxTime) * 100;
                     return (
                       <div key={language}>
                         <div className="flex items-center justify-between mb-2">
                           <LanguageBadge language={language} size="sm" />
                           <span className="text-sm text-slate-400">
-                            {formatHours(time)}
+                            {formatHours(time as number)}
                           </span>
                         </div>
                         <div className="w-full bg-slate-900/50 rounded-full h-2">
@@ -294,8 +357,8 @@ export const Profile: React.FC = () => {
 
           <div>
             <StreakCounter
-              currentStreak={user.stats.streak}
-              longestStreak={user.stats.longestStreak}
+              currentStreak={user.stats.streak || 0}
+              longestStreak={user.stats.longestStreak || 0}
               size="md"
             />
           </div>
@@ -303,37 +366,8 @@ export const Profile: React.FC = () => {
       )}
 
       {activeTab === 'projects' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 hover:border-slate-600/50 transition-all"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="text-xl font-semibold text-slate-100">
-                  {project.name}
-                </h3>
-                <LanguageBadge language={project.language} size="sm" />
-              </div>
-              <p className="text-sm text-slate-400 mb-4">
-                {project.description}
-              </p>
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-700/30">
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Time Spent</p>
-                  <p className="text-lg font-semibold text-slate-200">
-                    {formatHours(project.timeSpent)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Lines of Code</p>
-                  <p className="text-lg font-semibold text-slate-200">
-                    {project.linesOfCode?.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-slate-500">
+          Projects will appear here once connected to the API.
         </div>
       )}
 
@@ -347,10 +381,10 @@ export const Profile: React.FC = () => {
               </h3>
             </div>
             <p className="text-3xl font-bold text-slate-100 mb-2">
-              {formatHours(user.stats.weekTime)}
+              {formatHours(user.stats.weekTime || 0)}
             </p>
             <p className="text-sm text-slate-400">
-              Average: {formatHours(user.stats.weekTime / 7)} per day
+              Average: {formatHours((user.stats.weekTime || 0) / 7)} per day
             </p>
           </div>
 
@@ -362,10 +396,10 @@ export const Profile: React.FC = () => {
               </h3>
             </div>
             <p className="text-3xl font-bold text-slate-100 mb-2">
-              {formatHours(user.stats.monthTime)}
+              {formatHours(user.stats.monthTime || 0)}
             </p>
             <p className="text-sm text-slate-400">
-              Average: {formatHours(user.stats.monthTime / 30)} per day
+              Average: {formatHours((user.stats.monthTime || 0) / 30)} per day
             </p>
           </div>
 
@@ -377,7 +411,7 @@ export const Profile: React.FC = () => {
               </h3>
             </div>
             <p className="text-3xl font-bold text-slate-100 mb-2">
-              {user.stats.longestStreak}
+              {user.stats.longestStreak || 0}
             </p>
             <p className="text-sm text-slate-400">
               days of consecutive coding
