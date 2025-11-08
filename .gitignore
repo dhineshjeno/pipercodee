@@ -4,3 +4,5 @@
 /backend/aws/lambda/leaderboard/node_modules
 /backend/aws/lambda/postMe/node_modules
 /backend/aws/lambda/postSignUp/node_modules
+FIX_COGNITO_SCOPE_ERROR.md
+COGNITO_APP_CLIENT_SETUP.md
