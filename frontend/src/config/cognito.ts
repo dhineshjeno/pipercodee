@@ -1,6 +1,6 @@
 export const cognitoRegion = 'ap-south-1';
 export const cognitoUserPoolId = 'ap-south-1_F2cFRz0qR';
-export const cognitoAppClientId = '3b7fr3mamdosg4nnbjaklsk53j';
+export const cognitoAppClientId = 'er0uc4ct2hm9o4urqgepc8mj2';
 export const cognitoDomain = 'https://ap-south-1f2cfrz0qr.auth.ap-south-1.amazoncognito.com';
 
 export function getRedirectUri(): string {
